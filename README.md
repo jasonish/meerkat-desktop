@@ -1,7 +1,6 @@
-# Tauri + Solid + Typescript
+# Meerkat Desktop (for Windows)
 
-This template should help get you started developing with Tauri, Solid and Typescript in Vite.
+This is an example of what a Suricata control panel applicationm for Windows
+could look like.
 
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+It was largley "vibe" coded. Use at your own risk.

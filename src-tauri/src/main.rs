@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    suricata_control_panel_lib::run()
+    meerkat_desktop_lib::run()
 }

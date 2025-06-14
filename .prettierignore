@@ -1,0 +1,8 @@
+# Rust code
+/src-tauri
+
+# Node modules
+/node_modules
+
+/.vscode
+/.claude

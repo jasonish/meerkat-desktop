@@ -1,7 +1,7 @@
 {
-  "name": "suricata-control-panel",
+  "name": "meerkat-desktop",
   "version": "0.1.0",
-  "description": "",
+  "description": "Meerkat Desktop - Suricata Control Panel",
   "type": "module",
   "scripts": {
     "start": "vite",
