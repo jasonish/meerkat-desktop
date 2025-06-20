@@ -357,7 +357,7 @@ async fn install_evebox(app: AppHandle) -> Result<String, String> {
             .map_err(|e| e.to_string())?;
         downloaded += chunk.len() as u64;
 
-        // Emit progress event
+        // Emit download progress event
         if total_size > 0 {
             let progress = (downloaded as f64 / total_size as f64 * 100.0) as u32;
             app.emit("download-progress-evebox", progress).ok();
@@ -369,6 +369,12 @@ async fn install_evebox(app: AppHandle) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
     drop(file);
+
+    // Emit installation phase start
+    app.emit("evebox-installation-phase", serde_json::json!({
+        "phase": "extracting",
+        "message": "Extracting files..."
+    })).ok();
 
     // Clean up any existing temp extract directory
     let _ = std::fs::remove_dir_all(&temp_extract_dir);
@@ -392,6 +398,12 @@ async fn install_evebox(app: AppHandle) -> Result<String, String> {
         let error = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Failed to extract EveBox: {}", error));
     }
+
+    // Emit copying phase
+    app.emit("evebox-installation-phase", serde_json::json!({
+        "phase": "copying",
+        "message": "Copying files..."
+    })).ok();
 
     // Find evebox.exe in the extracted files
     let find_command = format!(
@@ -434,6 +446,12 @@ async fn install_evebox(app: AppHandle) -> Result<String, String> {
         let error = String::from_utf8_lossy(&copy_output.stderr);
         return Err(format!("Failed to copy evebox.exe: {}", error));
     }
+
+    // Emit completion phase
+    app.emit("evebox-installation-phase", serde_json::json!({
+        "phase": "complete",
+        "message": "Installation complete!"
+    })).ok();
 
     // Clean up temporary files
     let _ = std::fs::remove_file(&temp_zip_path);
@@ -1399,6 +1417,42 @@ fn open_evebox_url() -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn check_npcap_installed() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let npcap_driver = r"C:\\Windows\\System32\\drivers\\npcap.sys";
+        Ok(std::path::Path::new(npcap_driver).exists())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Npcap check is only available on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+fn check_suricata_installed() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // Check for suricata.exe in C:\Program Files\Suricata\
+        let suricata_exe = r"C:\Program Files\Suricata\suricata.exe";
+        Ok(Path::new(suricata_exe).exists())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Err("Suricata check is only available on Windows".to_string())
+    }
+}
+
+#[tauri::command]
+fn show_dependency_dialog(app: AppHandle, missing_deps: Vec<String>) -> Result<(), String> {
+    // This will be handled by the frontend
+    let _ = app.emit("dependency-check", serde_json::json!({
+        "missing_dependencies": missing_deps
+    }));
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1423,7 +1477,10 @@ pub fn run() {
             open_evebox_url,
             start_eve_json_tail,
             stop_eve_json_tail,
-            update_rules
+            update_rules,
+            check_npcap_installed,
+            check_suricata_installed,
+            show_dependency_dialog
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

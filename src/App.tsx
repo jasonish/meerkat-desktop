@@ -11,6 +11,10 @@ function App() {
   const [downloadingSuricata, setDownloadingSuricata] = createSignal(false);
   const [downloadingNpcap, setDownloadingNpcap] = createSignal(false);
   const [downloadingEvebox, setDownloadingEvebox] = createSignal(false);
+  const [eveboxInstallationPhase, setEveboxInstallationPhase] = createSignal<{
+    phase: string;
+    message: string;
+  } | null>(null);
   const [networkInterfaces, setNetworkInterfaces] = createSignal<string[]>([]);
   const [selectedInterface, setSelectedInterface] = createSignal("");
   const [suricataRunning, setSuricataRunning] = createSignal(false);
@@ -34,6 +38,21 @@ function App() {
   const [statsKeyFilter, setStatsKeyFilter] = createSignal("");
   const [eveboxRunning, setEveboxRunning] = createSignal(false);
   const [eveboxOutput, setEveboxOutput] = createSignal<string[]>([]);
+  const [showDependencyDialog, setShowDependencyDialog] = createSignal(false);
+  const [missingDependencies, setMissingDependencies] = createSignal<string[]>([]);
+
+  // Wizard step state
+  const [wizardStep, setWizardStep] = createSignal<
+    | null
+    | "npcap-check"
+    | "npcap-installing"
+    | "suricata-check"
+    | "suricata-installing"
+    | "evebox-installing"
+    | "done"
+  >(null);
+  const [wizardMessage, setWizardMessage] = createSignal("");
+  const [installProgress, setInstallProgress] = createSignal<number | null>(null);
 
   // Helper functions to parse interface string
   const parseInterface = (interfaceStr: string) => {
@@ -240,6 +259,36 @@ function App() {
     },
   );
 
+  const unlistenDependencyCheck = listen<{ missing_dependencies: string[] }>(
+    "dependency-check",
+    (event) => {
+      setMissingDependencies(event.payload.missing_dependencies);
+      setShowDependencyDialog(true);
+    },
+  );
+
+  // Listen for install progress events
+  const unlistenNpcapProgress = listen<number>(
+    "download-progress-npcap",
+    (event) => setInstallProgress(event.payload)
+  );
+  const unlistenSuricataProgress = listen<number>(
+    "download-progress-suricata",
+    (event) => setInstallProgress(event.payload)
+  );
+
+  // Listen for EveBox progress events
+  const unlistenEveboxProgress = listen<number>(
+    "download-progress-evebox",
+    (event) => setEveboxProgress(event.payload)
+  );
+
+  // Listen for EveBox installation phase events
+  const unlistenEveboxInstallation = listen<{ phase: string; message: string }>(
+    "evebox-installation-phase",
+    (event) => setEveboxInstallationPhase(event.payload)
+  );
+
   // Clean up listeners
   onCleanup(async () => {
     (await unlistenSuricata)();
@@ -249,10 +298,88 @@ function App() {
     (await unlistenEveJson)();
     (await unlistenRulesUpdate)();
     (await unlistenEveboxOutput)();
+    (await unlistenDependencyCheck)();
+    (await unlistenNpcapProgress)();
+    (await unlistenSuricataProgress)();
+    (await unlistenEveboxProgress)();
+    (await unlistenEveboxInstallation)();
   });
+
+  // Wizard logic
+  const runWizard = async () => {
+    // Step 1: Check npcap
+    setWizardStep("npcap-check");
+    setWizardMessage("");
+    setInstallProgress(null);
+    const npcapInstalled = await invoke<boolean>("check_npcap_installed");
+    if (!npcapInstalled) {
+      setWizardMessage("Npcap is required. Would you like to install it now?");
+      return;
+    }
+    // Step 2: Check suricata
+    setWizardStep("suricata-check");
+    setWizardMessage("");
+    setInstallProgress(null);
+    const suricataInstalled = await invoke<boolean>("check_suricata_installed");
+    if (!suricataInstalled) {
+      setWizardMessage("Suricata is required. Would you like to install it now?");
+      return;
+    }
+    // Done
+    setWizardStep("done");
+  };
+
+  onMount(() => {
+    runWizard();
+  });
+
+  const handleWizardYes = async () => {
+    if (wizardStep() === "npcap-check") {
+      setWizardStep("npcap-installing");
+      setWizardMessage("Installing Npcap... When Npcap installation is complete, click OK to continue.");
+      setInstallProgress(0);
+      try {
+        await invoke("install_npcap");
+        // Don't automatically mark as complete - let user click OK when done
+      } catch (e) {
+        setWizardMessage("Npcap installation failed. Please try again or install manually.");
+        setInstallProgress(null);
+      }
+    } else if (wizardStep() === "suricata-check") {
+      setWizardStep("suricata-installing");
+      setWizardMessage("Installing Suricata... When Suricata installation is complete, click OK to continue.");
+      setInstallProgress(0);
+      try {
+        await invoke("install_suricata");
+        // Don't automatically mark as complete - let user click OK when done
+      } catch (e) {
+        setWizardMessage("Suricata installation failed. Please try again or install manually.");
+        setInstallProgress(null);
+      }
+    }
+  };
+
+  const handleWizardContinue = async () => {
+    // After installation is complete, continue with the wizard
+    if (wizardStep() === "npcap-installing") {
+      // Re-run wizard to check suricata
+      runWizard();
+    } else if (wizardStep() === "suricata-installing") {
+      // Re-run wizard to finish
+      runWizard();
+    }
+  };
+
+  const handleWizardNo = async () => {
+    // Don't close the app, just close the wizard and let user continue
+    setWizardStep("done");
+  };
 
   // Load network interfaces on mount
   onMount(async () => {
+    // Check dependencies first
+    await runWizard();
+    
     try {
       const interfaces = await invoke<string[]>("get_network_interfaces");
       setNetworkInterfaces(interfaces);
@@ -301,8 +428,139 @@ function App() {
 
   const appWindow = getCurrentWindow();
 
+  // Add these functions to handle menu-triggered installs
+  const handleMenuInstallNpcap = async () => {
+    setWizardStep("npcap-installing");
+    setWizardMessage("Installing Npcap... When Npcap installation is complete, click OK to continue.");
+    setInstallProgress(0);
+    try {
+      await invoke("install_npcap");
+      // Don't automatically mark as complete - let user click OK when done
+    } catch (e) {
+      setWizardMessage("Npcap installation failed. Please try again or install manually.");
+      setInstallProgress(null);
+    }
+  };
+
+  const handleMenuInstallSuricata = async () => {
+    setWizardStep("suricata-installing");
+    setWizardMessage("Installing Suricata... When Suricata installation is complete, click OK to continue.");
+    setInstallProgress(0);
+    try {
+      await invoke("install_suricata");
+      // Don't automatically mark as complete - let user click OK when done
+    } catch (e) {
+      setWizardMessage("Suricata installation failed. Please try again or install manually.");
+      setInstallProgress(null);
+    }
+  };
+
+  const handleMenuInstallEvebox = async () => {
+    setWizardStep("evebox-installing");
+    setWizardMessage("Installing EveBox... Please wait until installation is complete.");
+    setDownloadingEvebox(true);
+    setEveboxProgress(0);
+    setEveboxInstallationPhase(null);
+    try {
+      await invoke("install_evebox");
+      setWizardMessage("EveBox installation completed. Click OK to continue.");
+      setDownloadingEvebox(false);
+    } catch (e) {
+      setWizardMessage("EveBox installation failed. Please try again or install manually.");
+      setDownloadingEvebox(false);
+      setEveboxInstallationPhase(null);
+    }
+  };
+
   return (
     <>
+      {/* Wizard Dialog */}
+      <Show when={wizardStep() && wizardStep() !== "done"}>
+        <div class="dialog-overlay">
+          <div class="dialog">
+            <div class="dialog-header">
+              <h2>Setup Required</h2>
+            </div>
+            <div class="dialog-content">
+              <p>{wizardMessage()}</p>
+              <Show when={installProgress() !== null || wizardStep() === "evebox-installing"}>
+                <Show when={wizardStep() === "evebox-installing"}>
+                  {/* Download Progress Bar */}
+                  <div class="progress-section">
+                    <div class="progress-label">
+                      Download Progress
+                    </div>
+                    <div class="progress-bar-container">
+                      <div 
+                        class="progress-bar" 
+                        style={{ width: `${eveboxProgress()}%` }} 
+                      />
+                    </div>
+                    <div class="progress-details">
+                      {eveboxProgress()}%
+                    </div>
+                  </div>
+                  
+                  {/* Installation Progress Bar */}
+                  <Show when={eveboxInstallationPhase()}>
+                    <div class="progress-section">
+                      <div class="progress-label">
+                        {eveboxInstallationPhase()?.message || "Processing..."}
+                      </div>
+                      <div class="progress-bar-container">
+                        <div 
+                          class={`progress-bar ${eveboxInstallationPhase()?.phase !== "complete" ? "indeterminate" : ""}`}
+                          style={{ 
+                            width: eveboxInstallationPhase()?.phase === "complete" ? "100%" : "100%" 
+                          }} 
+                        />
+                      </div>
+                    </div>
+                  </Show>
+                </Show>
+                
+                <Show when={wizardStep() !== "evebox-installing"}>
+                  <div class="progress-bar-container">
+                    <div 
+                      class="progress-bar" 
+                      style={{ width: `${installProgress() ?? 0}%` }} 
+                    />
+                  </div>
+                  <div class="progress-details">
+                    {installProgress()}%
+                  </div>
+                </Show>
+              </Show>
+            </div>
+            <div class="dialog-footer">
+              <Show when={wizardStep() === "npcap-check" || wizardStep() === "suricata-check"}>
+                <button class="dialog-btn primary" onClick={handleWizardYes}>Yes</button>
+                <button class="dialog-btn secondary" onClick={handleWizardNo}>No</button>
+              </Show>
+              <Show when={wizardStep() === "npcap-installing" || wizardStep() === "suricata-installing" || wizardStep() === "evebox-installing"}>
+                <button 
+                  class="dialog-btn primary" 
+                  onClick={() => {
+                    if (wizardStep() === "evebox-installing" && eveboxInstallationPhase()?.phase === "complete") {
+                      // Close dialog for evebox installation
+                      setWizardStep("done");
+                    } else {
+                      handleWizardContinue();
+                    }
+                  }}
+                  disabled={
+                    (wizardStep() === "evebox-installing" && eveboxInstallationPhase()?.phase !== "complete") ||
+                    (wizardStep() !== "evebox-installing" && downloadingEvebox())
+                  }
+                >
+                  OK
+                </button>
+              </Show>
+            </div>
+          </div>
+        </div>
+      </Show>
+
       <nav class="navbar">
         <div class="navbar-content">
           <div class="navbar-left">
@@ -466,83 +724,26 @@ function App() {
                 <div class="dropdown-menu">
                   <button
                     class="dropdown-item"
-                    onClick={async () => {
-                      try {
-                        setDownloadingSuricata(true);
-                        setSuricataProgress(0);
-                        const result = await invoke("install_suricata");
-                        console.log(result);
-                      } catch (error) {
-                        console.error("Failed to install Suricata:", error);
-                      } finally {
-                        setDownloadingSuricata(false);
-                        setSuricataProgress(0);
-                      }
-                    }}
-                    disabled={downloadingSuricata()}
+                    onClick={handleMenuInstallSuricata}
                   >
                     <span class="dropdown-item-text">
                       Suricata
-                      {downloadingSuricata() && (
-                        <span class="download-progress">
-                          {" "}
-                          ({suricataProgress()}%)
-                        </span>
-                      )}
                     </span>
                   </button>
                   <button
                     class="dropdown-item"
-                    onClick={async () => {
-                      try {
-                        setDownloadingNpcap(true);
-                        setNpcapProgress(0);
-                        const result = await invoke("install_npcap");
-                        console.log(result);
-                      } catch (error) {
-                        console.error("Failed to install NPCap:", error);
-                      } finally {
-                        setDownloadingNpcap(false);
-                        setNpcapProgress(0);
-                      }
-                    }}
-                    disabled={downloadingNpcap()}
+                    onClick={handleMenuInstallNpcap}
                   >
                     <span class="dropdown-item-text">
                       NPCap
-                      {downloadingNpcap() && (
-                        <span class="download-progress">
-                          {" "}
-                          ({npcapProgress()}%)
-                        </span>
-                      )}
                     </span>
                   </button>
                   <button
                     class="dropdown-item"
-                    onClick={async () => {
-                      try {
-                        setDownloadingEvebox(true);
-                        setEveboxProgress(0);
-                        const result = await invoke("install_evebox");
-                        console.log(result);
-                      } catch (error) {
-                        console.error("Failed to install EveBox:", error);
-                      } finally {
-                        setDownloadingEvebox(false);
-                        setEveboxProgress(0);
-                      }
-                    }}
-                    disabled={downloadingEvebox()}
+                    onClick={handleMenuInstallEvebox}
                   >
                     <span class="dropdown-item-text">
                       EveBox
-                      {downloadingEvebox() && (
-                        <span class="download-progress">
-                          {" "}
-                          ({eveboxProgress()}%)
-                        </span>
-                      )}
                     </span>
                   </button>
                 </div>

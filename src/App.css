@@ -1210,6 +1210,29 @@ button {
   overflow: hidden;
 }
 
+.progress-bar.indeterminate {
+  width: 100% !important;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--suricata-orange) 25%,
+    var(--suricata-light-orange) 50%,
+    var(--suricata-orange) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: indeterminate-progress 1.5s infinite linear;
+}
+
+@keyframes indeterminate-progress {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .progress-bar::after {
   content: "";
   position: absolute;
@@ -1224,6 +1247,10 @@ button {
     transparent 100%
   );
   animation: progress-shimmer 1.5s infinite;
+}
+
+.progress-bar.indeterminate::after {
+  display: none;
 }
 
 @keyframes progress-shimmer {
@@ -1357,4 +1384,154 @@ button {
   width: 16px;
   height: 16px;
   accent-color: var(--suricata-orange);
+}
+
+.stats-checkbox-label input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+/* Dialog Styles */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  backdrop-filter: blur(2px);
+}
+
+.dialog {
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  max-width: 500px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  animation: dialog-slide-in 0.3s ease-out;
+}
+
+@keyframes dialog-slide-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dialog-header {
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid #e1e5e9;
+}
+
+.dialog-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--suricata-text);
+}
+
+.dialog-content {
+  padding: 1.5rem;
+  color: #333;
+  line-height: 1.6;
+}
+
+.dialog-content p {
+  margin: 0 0 1rem 0;
+}
+
+.progress-section {
+  margin-bottom: 1rem;
+}
+
+.progress-label {
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.dialog-content ul {
+  margin: 0.5rem 0;
+  padding-left: 1.5rem;
+}
+
+.dialog-content li {
+  margin: 0.25rem 0;
+  color: #666;
+}
+
+.dialog-footer {
+  padding: 16px 24px 24px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.dialog-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dialog-btn.primary {
+  background-color: var(--suricata-orange);
+  color: white;
+}
+
+.dialog-btn.primary:hover {
+  background-color: var(--suricata-dark-orange);
+}
+
+.dialog-btn.secondary {
+  background-color: #f1f3f4;
+  color: var(--suricata-text);
+}
+
+.dialog-btn.secondary:hover {
+  background-color: #e8eaed;
+}
+
+/* Dark mode support for dialog */
+@media (prefers-color-scheme: dark) {
+  .dialog {
+    background-color: var(--suricata-dark);
+    border: 1px solid #333;
+  }
+  
+  .dialog-header {
+    border-bottom-color: #333;
+  }
+  
+  .dialog-header h2 {
+    color: white;
+  }
+  
+  .dialog-content {
+    color: #e1e5e9;
+  }
+  
+  .dialog-btn.secondary {
+    background-color: #333;
+    color: #e1e5e9;
+  }
+  
+  .dialog-btn.secondary:hover {
+    background-color: #444;
+  }
 }
